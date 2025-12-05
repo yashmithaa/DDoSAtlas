@@ -1,4 +1,8 @@
-// In-memory store for attack events
+import { fetchThreatFeeds } from './feeds';
+import { normalizeEvents, deduplicateEvents } from './normalize';
+import { scoreEvents } from './scoring';
+import { geolocateBatch } from './geo';
+
 export interface AttackEvent {
   id: string;
   ip: string;
@@ -7,82 +11,142 @@ export interface AttackEvent {
   country: string;
   score: number;
   source: string;
+  reason: string;
   timestamp: number;
 }
 
 const MAX_EVENTS = 500;
-let events: AttackEvent[] = [];
+const REFRESH_INTERVAL = 30 * 60 * 1000; // 30 minutes
 
-// Country data for fake event generation
-const COUNTRIES = [
-  { name: "United States", lat: 37.0902, lon: -95.7129 },
-  { name: "China", lat: 35.8617, lon: 104.1954 },
-  { name: "Russia", lat: 61.5240, lon: 105.3188 },
-  { name: "Brazil", lat: -14.2350, lon: -51.9253 },
-  { name: "India", lat: 20.5937, lon: 78.9629 },
-  { name: "United Kingdom", lat: 55.3781, lon: -3.4360 },
-  { name: "Germany", lat: 51.1657, lon: 10.4515 },
-  { name: "France", lat: 46.2276, lon: 2.2137 },
-  { name: "Japan", lat: 36.2048, lon: 138.2529 },
-  { name: "South Korea", lat: 35.9078, lon: 127.7669 },
-  { name: "Canada", lat: 56.1304, lon: -106.3468 },
-  { name: "Australia", lat: -25.2744, lon: 133.7751 },
-  { name: "Netherlands", lat: 52.1326, lon: 5.2913 },
-  { name: "Poland", lat: 51.9194, lon: 19.1451 },
-  { name: "Turkey", lat: 38.9637, lon: 35.2433 },
-];
+// In-memory cache
+let cachedEvents: AttackEvent[] = [];
+let lastRefreshed: number = 0;
+let isRefreshing = false;
 
-function randomIP(): string {
-  return `${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
-}
 
-function generateFakeEvents(count: number = 3): AttackEvent[] {
-  const newEvents: AttackEvent[] = [];
+async function buildEvents(): Promise<AttackEvent[]> {
+  console.log('Building events from threat feeds...');
   
-  for (let i = 0; i < count; i++) {
-    const country = COUNTRIES[Math.floor(Math.random() * COUNTRIES.length)];
-    // Add some randomness to coordinates
-    const latVariance = (Math.random() - 0.5) * 10;
-    const lonVariance = (Math.random() - 0.5) * 10;
+  // Fetch threat feeds
+  const rawEntries = await fetchThreatFeeds();
+  
+  if (rawEntries.length === 0) {
+    console.warn('No threat feed data available');
+    return [];
+  }
+
+  // Normalize events
+  const normalized = normalizeEvents(rawEntries);
+  
+  // Deduplicate and track multiple sources per IP
+  const ipMap = deduplicateEvents(normalized);
+  
+  // Score events
+  const scoredMap = scoreEvents(ipMap);
+  
+  // Sort by risk and take top entries
+  const topIPs = Array.from(scoredMap.entries())
+    .sort((a, b) => b[1].risk - a[1].risk)
+    .slice(0, MAX_EVENTS)
+    .map(([ip]) => ip);
+  
+  console.log(`Processing top ${topIPs.length} IPs for geolocation...`);
+  
+  // Geolocate IPs (with caching and rate limiting)
+  const geoMap = await geolocateBatch(topIPs);
+  
+  // Build final events
+  const events: AttackEvent[] = [];
+  
+  for (const ip of topIPs) {
+    const scoredEvent = scoredMap.get(ip);
+    const geo = geoMap.get(ip);
     
-    newEvents.push({
-      id: `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      ip: randomIP(),
-      latitude: country.lat + latVariance,
-      longitude: country.lon + lonVariance,
-      country: country.name,
-      score: Math.floor(Math.random() * 100),
-      source: "mock",
-      timestamp: Date.now(),
-    });
+    if (scoredEvent && geo) {
+      events.push({
+        id: `evt_${Date.now()}_${ip.replace(/\./g, '_')}`,
+        ip: scoredEvent.ip,
+        latitude: geo.latitude,
+        longitude: geo.longitude,
+        country: geo.country,
+        score: scoredEvent.risk,
+        source: scoredEvent.source,
+        reason: scoredEvent.reason,
+        timestamp: scoredEvent.timestamp,
+      });
+    }
   }
   
-  return newEvents;
+  console.log(`Built ${events.length} events`);
+  return events;
 }
 
-export function addFakeEvents(): void {
-  const newEvents = generateFakeEvents();
-  events.push(...newEvents);
+
+async function refreshIfNeeded(): Promise<void> {
+  const now = Date.now();
+  const age = now - lastRefreshed;
   
-  // Keep only the last MAX_EVENTS
-  if (events.length > MAX_EVENTS) {
-    events = events.slice(-MAX_EVENTS);
+  // If data is fresh enough, skip refresh
+  if (age < REFRESH_INTERVAL && cachedEvents.length > 0) {
+    console.log(`Data is fresh (${Math.round(age / 1000 / 60)} minutes old), using cache`);
+    return;
   }
+  
+  // Prevent concurrent refreshes
+  if (isRefreshing) {
+    console.log('Refresh already in progress, waiting...');
+    // Wait for the ongoing refresh to complete
+    while (isRefreshing) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    return;
+  }
+  
+  try {
+    isRefreshing = true;
+    console.log('Refreshing threat data...');
+    
+    const newEvents = await buildEvents();
+    
+    if (newEvents.length > 0) {
+      cachedEvents = newEvents;
+      lastRefreshed = now;
+      console.log(`Refresh complete: ${newEvents.length} events cached`);
+    } else {
+      console.warn('Refresh produced no events, keeping old cache');
+    }
+  } catch (error) {
+    console.error('Error refreshing data:', error);
+    // Keep using stale cache on error
+  } finally {
+    isRefreshing = false;
+  }
+}
+
+export async function ensureFreshData(): Promise<AttackEvent[]> {
+  await refreshIfNeeded();
+  return cachedEvents;
 }
 
 export function getEvents(): AttackEvent[] {
-  return events;
+  return cachedEvents;
 }
 
 export function getSummary(): {
   total: number;
   topCountries: { country: string; count: number }[];
-  lastUpdate: number | null;
+  averageRisk: number;
+  lastUpdate: number;
 } {
+  const events = cachedEvents;
+  
+  // Count by country
   const countryMap = new Map<string, number>();
+  let totalRisk = 0;
   
   events.forEach((event) => {
     countryMap.set(event.country, (countryMap.get(event.country) || 0) + 1);
+    totalRisk += event.score;
   });
   
   const topCountries = Array.from(countryMap.entries())
@@ -90,11 +154,12 @@ export function getSummary(): {
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
   
-  const lastUpdate = events.length > 0 ? Math.max(...events.map(e => e.timestamp)) : null;
+  const averageRisk = events.length > 0 ? Math.round(totalRisk / events.length) : 0;
   
   return {
     total: events.length,
     topCountries,
-    lastUpdate,
+    averageRisk,
+    lastUpdate: lastRefreshed,
   };
 }

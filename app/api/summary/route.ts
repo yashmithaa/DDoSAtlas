@@ -1,10 +1,22 @@
 import { NextResponse } from "next/server";
-import { getSummary, addFakeEvents } from "@/lib/store";
+import { ensureFreshData, getSummary } from "@/lib/store";
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET() {
-  addFakeEvents();
-  
-  const summary = getSummary();
-  
-  return NextResponse.json(summary);
+  try {
+    await ensureFreshData();
+    
+    // Get summary from cached data
+    const summary = getSummary();
+    
+    return NextResponse.json(summary);
+  } catch (error) {
+    console.error('Error in /api/summary:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch summary data' },
+      { status: 500 }
+    );
+  }
 }
