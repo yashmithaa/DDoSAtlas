@@ -1,7 +1,6 @@
 import { NormalizedEvent } from './normalize';
 
 export interface ScoredEvent extends NormalizedEvent {
-  // numeric risk value (0-100)
   risk: number;
   score: number;
   feedCount: number;
@@ -9,32 +8,37 @@ export interface ScoredEvent extends NormalizedEvent {
 
 //Calculate risk score for an IP based on threat type and feed count
 function calculateRiskScore(events: NormalizedEvent[]): number {
-  let score = 0;
+  let baseScore = 0;
 
-  // Base score from threat types
+  // Base score from threat types - find the highest severity threat across all events
   for (const event of events) {
     const reason = event.reason.toLowerCase();
+    let eventScore = 0;
     
     if (reason.includes('botnet') || reason.includes('c2')) {
-      score += 60;
+      eventScore = 50;
     } else if (reason.includes('malware')) {
-      score += 40;
+      eventScore = 40;
     } else if (reason.includes('scanner') || reason.includes('abuse')) {
-      score += 30;
+      eventScore = 30;
     } else if (reason.includes('spam')) {
-      score += 25;
+      eventScore = 25;
     } else {
-      score += 20; // Default for any malicious activity
+      eventScore = 20; 
     }
+    
+    // Track the highest severity
+    baseScore = Math.max(baseScore, eventScore);
   }
 
-  // Bonus for appearing in multiple feeds
+  let feedBonus = 0;
   if (events.length > 1) {
-    score += 20 * (events.length - 1);
+    feedBonus = Math.min(40, 10 * (events.length - 1));
   }
 
-  // Clamp to 0-100 range
-  return Math.min(100, Math.max(0, score));
+  const totalScore = baseScore + feedBonus;
+  
+  return Math.min(100, Math.max(0, totalScore));
 }
 
 //Score all events based on threat intelligence

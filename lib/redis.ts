@@ -13,13 +13,13 @@ import { Redis } from '@upstash/redis';
 
 export const REDIS_CONFIG = {
   // TTLs in seconds
-  GEO_TTL: parseInt(process.env.REDIS_GEO_TTL || '2592000', 10),      // 30 days
-  EVENTS_TTL: parseInt(process.env.REDIS_EVENTS_TTL || '86400', 10),  // 24 hours
-  LOCK_TTL: parseInt(process.env.REDIS_LOCK_TTL || '60', 10),         // 60 seconds
-  SUMMARY_TTL: 300,                                                    // 5 minutes
+  GEO_TTL: parseInt(process.env.REDIS_GEO_TTL || '2592000', 10),     
+  EVENTS_TTL: parseInt(process.env.REDIS_EVENTS_TTL || '86400', 10),  
+  LOCK_TTL: parseInt(process.env.REDIS_LOCK_TTL || '60', 10),       
+  SUMMARY_TTL: 300,                                                    
   
   // Refresh interval in ms
-  REFRESH_INTERVAL: parseInt(process.env.REFRESH_INTERVAL_MS || '1800000', 10), // 30 min
+  REFRESH_INTERVAL: parseInt(process.env.REFRESH_INTERVAL_MS || '1800000', 10),
   
   // Max events to store
   MAX_EVENTS: 500,

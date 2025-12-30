@@ -19,7 +19,6 @@ interface GlobeComponentProps {
   events: AttackEvent[];
 }
 
-// Vibrant color palette inspired by the reference image
 const ARC_COLORS = [
   // Magenta/Pink tones
   ['rgba(255, 0, 128, 0.9)', 'rgba(255, 100, 180, 0.4)'],
@@ -34,16 +33,16 @@ const ARC_COLORS = [
   ['rgba(150, 50, 255, 0.9)', 'rgba(180, 120, 255, 0.4)'],
 ];
 
-// Point colors - glowing effect colors
+// green theme matching DDoSAtlas design
 const POINT_COLORS = [
-  '#ff0080', // Magenta
-  '#00d4ff', // Cyan
-  '#ff4d94', // Pink
-  '#00b4d8', // Light blue
-  '#bf00ff', // Purple
-  '#00ff88', // Green
-  '#ff6b35', // Orange
-  '#ffd700', // Gold
+  '#4ade80', // Bright green (green-400)
+  '#22c55e', // Medium green
+  '#16a34a', // Dark green
+  '#84cc16', // Lime green
+  '#65a30d', // Olive green
+  '#10b981', // Emerald
+  '#059669', // Teal green
+  '#047857', // Dark teal
 ];
 
 export default function GlobeComponent({ events }: GlobeComponentProps) {
@@ -69,17 +68,17 @@ export default function GlobeComponent({ events }: GlobeComponentProps) {
     return ARC_COLORS[index % ARC_COLORS.length];
   }, []);
 
-  // Get point color based on score and index
+  // Get point color based on score and index - green theme
   const getPointColor = useCallback((score: number, index: number) => {
-    // High severity gets red/magenta, low severity gets blue/cyan
+    // High severity gets bright green, medium gets medium green, low gets darker green
     if (score > 70) {
-      return POINT_COLORS[0]; // Magenta for high threat
+      return POINT_COLORS[index % 2]; // Bright greens (0,1)
     } else if (score > 50) {
-      return POINT_COLORS[index % 3]; // Pink/magenta variants
+      return POINT_COLORS[2 + (index % 2)]; // Medium greens (2,3)
     } else if (score > 30) {
-      return POINT_COLORS[3 + (index % 2)]; // Blue/cyan variants
+      return POINT_COLORS[4 + (index % 2)]; // Light greens (4,5)
     } else {
-      return POINT_COLORS[5 + (index % 3)]; // Green/orange/gold for low threat
+      return POINT_COLORS[6 + (index % 2)]; // Dark greens (6,7)
     }
   }, []);
 
