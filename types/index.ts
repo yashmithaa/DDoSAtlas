@@ -27,6 +27,6 @@ export interface DataSource {
   name: string;
   description: string;
   url: string;
-  status: "active" | "inactive" | "coming-soon";
+  status: "active" | "inactive";
   type: "threat-intel" | "honeypot" | "blocklist";
 }

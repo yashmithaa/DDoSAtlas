@@ -1,73 +1,18 @@
-import { PageContainer } from "@/components/layout";
-import { Card, CardHeader } from "@/components/ui";
-import type { DataSource } from "@/types";
+"use client";
 
-const DATA_SOURCES: DataSource[] = [
-  {
-    id: "abuseipdb",
-    name: "AbuseIPDB",
-    description:
-      "Community-driven database of reported malicious IP addresses with abuse confidence scores.",
-    url: "https://www.abuseipdb.com/",
-    status: "active",
-    type: "threat-intel",
-  },
-  {
-    id: "feodotracker",
-    name: "Feodo Tracker",
-    description:
-      "Botnet C2 tracker by abuse.ch, tracking Emotet, Dridex, and other banking trojans.",
-    url: "https://feodotracker.abuse.ch/",
-    status: "active",
-    type: "blocklist",
-  },
-  {
-    id: "sslbl",
-    name: "SSL Blacklist",
-    description:
-      "Database of malicious SSL certificates used by botnet C&C servers.",
-    url: "https://sslbl.abuse.ch/",
-    status: "active",
-    type: "blocklist",
-  },
-  {
-    id: "urlhaus",
-    name: "URLhaus",
-    description: "Database of malicious URLs used for malware distribution.",
-    url: "https://urlhaus.abuse.ch/",
-    status: "coming-soon",
-    type: "threat-intel",
-  },
-  {
-    id: "threatfox",
-    name: "ThreatFox",
-    description:
-      "Platform for sharing indicators of compromise (IOCs) with the security community.",
-    url: "https://threatfox.abuse.ch/",
-    status: "coming-soon",
-    type: "threat-intel",
-  },
-  {
-    id: "honeypot",
-    name: "Honeypot Network",
-    description:
-      "Custom honeypot infrastructure for capturing real-time attack data.",
-    url: "#",
-    status: "coming-soon",
-    type: "honeypot",
-  },
-];
+import { useEffect, useState } from "react";
+import { PageContainer } from "@/components/layout";
+import { Card } from "@/components/ui";
+import type { DataSource } from "@/types";
 
 const statusColors = {
   active: "bg-green-500",
   inactive: "bg-gray-500",
-  "coming-soon": "bg-yellow-500",
 };
 
 const statusLabels = {
   active: "Active",
-  inactive: "Inactive",
-  "coming-soon": "Coming Soon",
+  inactive: "Not Configured",
 };
 
 const typeColors = {
@@ -77,18 +22,69 @@ const typeColors = {
 };
 
 export default function DataSourcesPage() {
-  const activeSources = DATA_SOURCES.filter((s) => s.status === "active");
-  const comingSources = DATA_SOURCES.filter((s) => s.status === "coming-soon");
+  const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchDataSources() {
+      try {
+        const response = await fetch("/api/data-sources");
+        if (!response.ok) {
+          throw new Error("Failed to fetch data sources");
+        }
+        const data = await response.json();
+        setDataSources(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unknown error");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchDataSources();
+  }, []);
+
+  const activeSources = dataSources.filter((s) => s.status === "active");
+  const inactiveSources = dataSources.filter((s) => s.status === "inactive");
+
+  if (loading) {
+    return (
+      <PageContainer>
+        <div className="max-w-4xl mx-auto">
+          <div className="animate-pulse space-y-4">
+            <div className="h-8 bg-gray-700 rounded w-1/3"></div>
+            <div className="h-4 bg-gray-700 rounded w-2/3"></div>
+            <div className="space-y-4 mt-8">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-32 bg-gray-800 rounded-lg"></div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </PageContainer>
+    );
+  }
+
+  if (error) {
+    return (
+      <PageContainer>
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-red-900/20 border border-red-500 rounded-lg p-4">
+            <h2 className="text-red-400 font-semibold">Error Loading Data Sources</h2>
+            <p className="text-red-300 mt-2">{error}</p>
+          </div>
+        </div>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer>
       <div className="max-w-4xl mx-auto space-y-8">
         <div>
           <h1 className="text-2xl font-bold text-white mb-2">Data Sources</h1>
-          <p className="text-gray-400">
-            DDoSAtlas aggregates threat intelligence from multiple sources to
-            provide comprehensive attack visibility.
-          </p>
+          
         </div>
 
         {/* Active Sources */}
@@ -96,24 +92,35 @@ export default function DataSourcesPage() {
           <h2 className="text-lg font-semibold text-green-400 mb-4">
             Active Sources ({activeSources.length})
           </h2>
-          <div className="grid gap-4">
-            {activeSources.map((source) => (
-              <DataSourceCard key={source.id} source={source} />
-            ))}
-          </div>
+          {activeSources.length > 0 ? (
+            <div className="grid gap-4">
+              {activeSources.map((source) => (
+                <DataSourceCard key={source.id} source={source} />
+              ))}
+            </div>
+          ) : (
+            <Card className="p-4">
+              <p className="text-gray-400">
+                No active data sources configured. Please set the required environment
+                variables to enable threat feeds.
+              </p>
+            </Card>
+          )}
         </div>
 
-        {/* Coming Soon */}
-        <div>
-          <h2 className="text-lg font-semibold text-yellow-400 mb-4">
-            Coming Soon ({comingSources.length})
-          </h2>
-          <div className="grid gap-4">
-            {comingSources.map((source) => (
-              <DataSourceCard key={source.id} source={source} />
-            ))}
+        {/* Inactive Sources */}
+        {inactiveSources.length > 0 && (
+          <div>
+            <h2 className="text-lg font-semibold text-gray-400 mb-4">
+              Available Sources - Not Configured ({inactiveSources.length})
+            </h2>
+            <div className="grid gap-4">
+              {inactiveSources.map((source) => (
+                <DataSourceCard key={source.id} source={source} />
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </PageContainer>
   );
@@ -146,10 +153,10 @@ function DataSourceCard({ source }: { source: DataSource }) {
         </div>
         <div className="flex items-center gap-2">
           <span
-            className={`w-2 h-2 rounded-full ${statusColors[source.status]}`}
+            className={`w-2 h-2 rounded-full ${statusColors[source.status as keyof typeof statusColors]}`}
           />
           <span className="text-xs text-gray-500">
-            {statusLabels[source.status]}
+            {statusLabels[source.status as keyof typeof statusLabels]}
           </span>
         </div>
       </div>
