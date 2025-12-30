@@ -130,7 +130,7 @@ export default function Home() {
         {/* Main Content Area */}
         <div className="flex-1 relative overflow-hidden">
           {activeTab === "map" && (
-            <div className="w-full h-full absolute inset-0">
+            <div className="w-full h-full absolute inset-0 globe-container">
               <GlobeComponent events={events} />
             </div>
           )}

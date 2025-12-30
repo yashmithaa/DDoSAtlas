@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 
 interface AttackEvent {
@@ -19,17 +19,67 @@ interface GlobeComponentProps {
   events: AttackEvent[];
 }
 
+// Vibrant color palette inspired by the reference image
+const ARC_COLORS = [
+  // Magenta/Pink tones
+  ['rgba(255, 0, 128, 0.9)', 'rgba(255, 100, 180, 0.4)'],
+  ['rgba(255, 50, 150, 0.9)', 'rgba(255, 150, 200, 0.4)'],
+  ['rgba(220, 0, 100, 0.9)', 'rgba(255, 80, 160, 0.4)'],
+  // Cyan/Blue tones
+  ['rgba(0, 200, 255, 0.9)', 'rgba(100, 220, 255, 0.4)'],
+  ['rgba(0, 150, 255, 0.9)', 'rgba(80, 180, 255, 0.4)'],
+  ['rgba(50, 180, 255, 0.9)', 'rgba(120, 200, 255, 0.4)'],
+  // Purple tones
+  ['rgba(180, 0, 255, 0.9)', 'rgba(200, 100, 255, 0.4)'],
+  ['rgba(150, 50, 255, 0.9)', 'rgba(180, 120, 255, 0.4)'],
+];
+
+// Point colors - glowing effect colors
+const POINT_COLORS = [
+  '#ff0080', // Magenta
+  '#00d4ff', // Cyan
+  '#ff4d94', // Pink
+  '#00b4d8', // Light blue
+  '#bf00ff', // Purple
+  '#00ff88', // Green
+  '#ff6b35', // Orange
+  '#ffd700', // Gold
+];
+
 export default function GlobeComponent({ events }: GlobeComponentProps) {
   const globeEl = useRef<any>();
   const [arcsData, setArcsData] = useState<any[]>([]);
   const [pointsData, setPointsData] = useState<any[]>([]);
+  const [ringsData, setRingsData] = useState<any[]>([]);
   const [backendEvents, setBackendEvents] = useState<AttackEvent[] | null>(null);
 
   useEffect(() => {
-    // Auto-rotate globe
     if (globeEl.current) {
       globeEl.current.controls().autoRotate = true;
-      globeEl.current.controls().autoRotateSpeed = 0.5;
+      globeEl.current.controls().autoRotateSpeed = 0.3;
+      globeEl.current.controls().enableZoom = true;
+      
+      // Set initial camera position for a better view angle
+      globeEl.current.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 1000);
+    }
+  }, []);
+
+  // Get arc color based on index for variety
+  const getArcColor = useCallback((index: number) => {
+    return ARC_COLORS[index % ARC_COLORS.length];
+  }, []);
+
+  // Get point color based on score and index
+  const getPointColor = useCallback((score: number, index: number) => {
+    // High severity gets red/magenta, low severity gets blue/cyan
+    if (score > 70) {
+      return POINT_COLORS[0]; // Magenta for high threat
+    } else if (score > 50) {
+      return POINT_COLORS[index % 3]; // Pink/magenta variants
+    } else if (score > 30) {
+      return POINT_COLORS[3 + (index % 2)]; // Blue/cyan variants
+    } else {
+      return POINT_COLORS[5 + (index % 3)]; // Green/orange/gold for low threat
     }
   }, []);
 
@@ -37,92 +87,86 @@ export default function GlobeComponent({ events }: GlobeComponentProps) {
     if (!events || events.length === 0) {
       setPointsData([]);
       setArcsData([]);
+      setRingsData([]);
       return;
     }
 
-    // Compute score distribution to build adaptive thresholds
+    // Compute score distribution
     const scores = events.map((e) => e.score).filter((s) => typeof s === 'number');
     const sorted = [...scores].sort((a, b) => a - b);
-    const percentile = (p: number) => {
-      if (sorted.length === 0) return 0;
-      const idx = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
-      return sorted[idx];
-    };
-
-    const p50 = percentile(50);
-    const p80 = percentile(80);
-
-    const minAlt = 0.005;
-    const maxAlt = 0.12;
     const sMin = sorted[0] ?? 0;
     const sMax = sorted[sorted.length - 1] ?? 100;
-    const normalize = (score: number) => {
-      // handle constant-score datasets by using absolute scale
-      const t = sMax === sMin ? Math.max(0, Math.min(1, (score || 0) / 100)) : Math.max(0, Math.min(1, (score - sMin) / (sMax - sMin)));
-      // compress extremes with sqrt for better visual spread
-      return minAlt + Math.sqrt(t) * (maxAlt - minAlt);
+
+    const normalizeSize = (score: number) => {
+      const t = sMax === sMin 
+        ? Math.max(0, Math.min(1, (score || 0) / 100)) 
+        : Math.max(0, Math.min(1, (score - sMin) / (sMax - sMin)));
+      // More dramatic size variation
+      return 0.15 + Math.pow(t, 0.7) * 0.4;
     };
 
-    function scoreToColor(score: number) {
-      const s = typeof score === 'number' ? score : 0;
-      // fallback normalized t when sMax === sMin
-      const tFallback = sMax === sMin ? Math.max(0, Math.min(1, s / 100)) : undefined;
-      // Use HSL interpolation: green (120) -> yellow (45) -> red (0)
-      if (s >= p80 && sMax !== sMin) {
-        // high: interpolate 45 -> 0
-        const t = (s - p80) / Math.max(1e-6, (sMax - p80));
-        const hue = 45 - t * 45; // 45..0
-        return `hsl(${hue}, 85%, 55%)`;
-      } else if (s >= p50 && sMax !== sMin) {
-        // medium: interpolate 120 -> 45
-        const t = (s - p50) / Math.max(1e-6, (p80 - p50));
-        const hue = 120 - t * 75; // 120..45
-        return `hsl(${hue}, 85%, 45%)`;
-      } else {
-        // low or fallback when sMax === sMin: use normalized tFallback or relative to p50
-        const t = tFallback !== undefined ? tFallback : Math.max(0, Math.min(1, (s - sMin) / Math.max(1e-6, (p50 - sMin))));
-        const hue = 140 - t * 40; // 140..100 (greener range)
-        return `hsl(${hue}, 80%, 40%)`;
-      }
-    }
-
-    const points = events.map((event) => ({
+    const points = events.map((event, idx) => ({
       lat: event.latitude,
       lng: event.longitude,
-      size: normalize(event.score),
-      color: scoreToColor(event.score),
-      label: `${event.country} - ${event.ip} • Score: ${event.score}`,
+      size: normalizeSize(event.score),
+      color: getPointColor(event.score, idx),
+      label: `${event.country}\n ${event.ip}\n Threat Score: ${event.score}`,
+      altitude: 0.01,
     }));
     setPointsData(points);
 
+    // Create expanding rings for high-severity attacks
+    const rings = events
+      .filter(e => e.score > 60)
+      .slice(0, 15)
+      .map((event, idx) => ({
+        lat: event.latitude,
+        lng: event.longitude,
+        maxR: 3 + (event.score / 100) * 4,
+        propagationSpeed: 2 + Math.random() * 2,
+        repeatPeriod: 1500 + Math.random() * 1000,
+        color: getPointColor(event.score, idx),
+      }));
+    setRingsData(rings);
+
+    // Build beautiful arcs
     const buildArcs = (sourcePool: AttackEvent[], dests: AttackEvent[]) => {
       if (!dests || dests.length === 0) return [];
 
-      const numSources = Math.max(1, Math.min(10, sourcePool.length));
+      const numSources = Math.max(1, Math.min(15, sourcePool.length));
       const sources = sourcePool.slice(0, numSources);
 
-      const arcs = dests.slice(0, 20).map((dest, idx) => {
-        // pick a source deterministically from the pool (rotate through sources)
+      const arcs = dests.slice(0, 40).map((dest, idx) => {
         let src = sources[idx % sources.length];
 
-        // if source and dest are identical IPs, try next candidate
         if (src && src.ip === dest.ip && sources.length > 1) {
           src = sources[(idx + 1) % sources.length];
         }
 
-        // fallback to a light randomization only when src is missing
-        const startLat = src ? src.latitude : (Math.random() - 0.5) * 180;
-        const startLng = src ? src.longitude : (Math.random() - 0.5) * 360;
+        const startLat = src ? src.latitude : (Math.random() - 0.5) * 140;
+        const startLng = src ? src.longitude : (Math.random() - 0.5) * 300;
 
-        const col = scoreToColor(dest.score);
-        const color = col.replace('hsl(', 'hsla(').replace(')', ', 0.65)');
+        const colors = getArcColor(idx);
+        
+        // Calculate arc height based on distance
+        const latDiff = Math.abs(dest.latitude - startLat);
+        const lngDiff = Math.abs(dest.longitude - startLng);
+        const distance = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
+        const arcAltitude = 0.1 + (distance / 180) * 0.4;
 
         return {
           startLat,
           startLng,
           endLat: dest.latitude,
           endLng: dest.longitude,
-          color,
+          color: colors,
+          altitude: arcAltitude,
+          // Thin, ink-like lines
+          stroke: 0.08 + (dest.score / 100) * 0.18,
+          // Swift, minimal dash animation
+          dashLength: 0.05 + Math.random() * 0.05,
+          dashGap: 0.01 + Math.random() * 0.02,
+          animateTime: 600 + Math.random() * 400,
         };
       });
 
@@ -132,7 +176,7 @@ export default function GlobeComponent({ events }: GlobeComponentProps) {
     const pool = backendEvents && backendEvents.length > 0 ? backendEvents : events;
     const arcs = buildArcs(pool, events);
     setArcsData(arcs);
-  }, [events, backendEvents]);
+  }, [events, backendEvents, getArcColor, getPointColor]);
 
   useEffect(() => {
     let mounted = true;
@@ -157,30 +201,53 @@ export default function GlobeComponent({ events }: GlobeComponentProps) {
     return () => { mounted = false; };
   }, []);
 
-    return (
-    <div className="w-full h-full">
+  return (
+    <div className="w-full h-full relative">
+      {/* Ambient glow overlay */}
+      <div 
+        className="absolute inset-0 pointer-events-none z-10"
+        style={{
+          // Subtle blue vignette to blend with page background
+          background: 'radial-gradient(ellipse at 50% 45%, rgba(0,40,80,0.15) 0%, rgba(0,20,40,0.35) 55%, rgba(0,0,0,0.7) 100%)',
+        }}
+      />
+      
       <Globe
         ref={globeEl}
         globeImageUrl="//unpkg.com/three-globe/example/img/earth-night.jpg"
         backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
         
-        // Points (attack locations)
         pointsData={pointsData}
-        pointAltitude="size"
+        pointAltitude="altitude"
         pointColor="color"
         pointLabel="label"
-        pointRadius={0.2}
+        pointRadius="size"
+        pointsMerge={false}
         
-        // Arcs (attack paths)
         arcsData={arcsData}
         arcColor="color"
-        arcDashLength={0.4}
-        arcDashGap={0.2}
-        arcDashAnimateTime={2000}
-        arcStroke={0.5}
+        arcAltitude="altitude"
+        arcStroke="stroke"
+        arcDashLength="dashLength"
+        arcDashGap="dashGap"
+        arcDashAnimateTime="animateTime"
+        arcDashInitialGap={() => Math.random()}
         
-        atmosphereColor="#1e40af"
-        atmosphereAltitude={0.15}
+        // Rings for impact visualization
+        ringsData={ringsData}
+        ringColor="color"
+        ringMaxRadius="maxR"
+        ringPropagationSpeed="propagationSpeed"
+        ringRepeatPeriod="repeatPeriod"
+        ringAltitude={0.01}
+        
+        // Atmosphere - dramatic blue/cyan glow
+        atmosphereColor="#00d4ff"
+        atmosphereAltitude={0.25}
+        
+        // Globe appearance
+        showGlobe={true}
+        showAtmosphere={true}
         
         enablePointerInteraction={true}
       />
