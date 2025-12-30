@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { EventsProvider } from "@/providers";
+import { DashboardShell } from "@/components/layout";
 
 export const metadata: Metadata = {
   title: "DDoSAtlas",
@@ -13,7 +15,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <EventsProvider>
+          <DashboardShell>{children}</DashboardShell>
+        </EventsProvider>
+      </body>
     </html>
   );
 }
