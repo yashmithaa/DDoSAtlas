@@ -2,6 +2,20 @@ import { fetchThreatFeeds } from './feeds';
 import { normalizeEvents, deduplicateEvents } from './normalize';
 import { scoreEvents } from './scoring';
 import { geolocateBatch } from './geo';
+import {
+  REDIS_CONFIG,
+  acquireRefreshLock,
+  releaseRefreshLock,
+  getLastRefreshed,
+  setLastRefreshed,
+  storeEvents,
+  getTopEvents,
+  getCachedSummary,
+  setCachedSummary,
+  StoredEvent,
+  Summary,
+  getRedis,
+} from './redis';
 
 export interface AttackEvent {
   id: string;
@@ -15,23 +29,23 @@ export interface AttackEvent {
   timestamp: number;
 }
 
-const MAX_EVENTS = 500;
-const REFRESH_INTERVAL = 30 * 60 * 1000; // 30 minutes
+const MAX_EVENTS = REDIS_CONFIG.MAX_EVENTS;
+const REFRESH_INTERVAL = REDIS_CONFIG.REFRESH_INTERVAL;
 
-// In-memory cache
-let cachedEvents: AttackEvent[] = [];
-let lastRefreshed: number = 0;
+// In-memory fallback cache (used when Redis is unavailable)
+let localCachedEvents: AttackEvent[] = [];
+let localLastRefreshed: number = 0;
 let isRefreshing = false;
 
 
 async function buildEvents(): Promise<AttackEvent[]> {
-  console.log('Building events from threat feeds...');
+  console.log('[Store] Building events from threat feeds...');
   
   // Fetch threat feeds
   const rawEntries = await fetchThreatFeeds();
   
   if (rawEntries.length === 0) {
-    console.warn('No threat feed data available');
+    console.warn('[Store] No threat feed data available');
     return [];
   }
 
@@ -50,7 +64,7 @@ async function buildEvents(): Promise<AttackEvent[]> {
     .slice(0, MAX_EVENTS)
     .map(([ip]) => ip);
   
-  console.log(`Processing top ${topIPs.length} IPs for geolocation...`);
+  console.log(`[Store] Processing top ${topIPs.length} IPs for geolocation...`);
   
   // Geolocate IPs (with caching and rate limiting)
   const geoMap = await geolocateBatch(topIPs);
@@ -77,68 +91,171 @@ async function buildEvents(): Promise<AttackEvent[]> {
     }
   }
   
-  console.log(`Built ${events.length} events`);
+  console.log(`[Store] Built ${events.length} events`);
   return events;
 }
 
 
-async function refreshIfNeeded(): Promise<void> {
+/**
+ * Check if data needs refresh based on Redis or local timestamp.
+ */
+async function needsRefresh(): Promise<boolean> {
   const now = Date.now();
-  const age = now - lastRefreshed;
   
-  // If data is fresh enough, skip refresh
-  if (age < REFRESH_INTERVAL && cachedEvents.length > 0) {
-    console.log(`Data is fresh (${Math.round(age / 1000 / 60)} minutes old), using cache`);
+  // Try to get last refresh time from Redis
+  const redisLastRefreshed = await getLastRefreshed();
+  
+  if (redisLastRefreshed > 0) {
+    const age = now - redisLastRefreshed;
+    if (age < REFRESH_INTERVAL) {
+      console.log(`[Store] Data is fresh (${Math.round(age / 1000 / 60)} min old), using Redis cache`);
+      return false;
+    }
+  }
+  
+  // Fallback to local timestamp
+  if (localLastRefreshed > 0) {
+    const localAge = now - localLastRefreshed;
+    if (localAge < REFRESH_INTERVAL && localCachedEvents.length > 0) {
+      console.log(`[Store] Data is fresh locally (${Math.round(localAge / 1000 / 60)} min old)`);
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+/**
+ * Attempt to refresh data with atomic lock.
+ */
+async function refreshIfNeeded(): Promise<void> {
+  // Check if refresh is needed
+  if (!(await needsRefresh())) {
     return;
   }
   
-  // Prevent concurrent refreshes
+  // Prevent local concurrent refreshes
   if (isRefreshing) {
-    console.log('Refresh already in progress, waiting...');
-    // Wait for the ongoing refresh to complete
+    console.log('[Store] Local refresh in progress, waiting...');
     while (isRefreshing) {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     return;
   }
   
+  // Try to acquire distributed lock (Redis)
+  const lockAcquired = await acquireRefreshLock();
+  
+  if (!lockAcquired) {
+    console.log('[Store] Another instance is refreshing, waiting for fresh data...');
+    // Wait a bit and check for fresh data
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    return;
+  }
+  
   try {
     isRefreshing = true;
-    console.log('Refreshing threat data...');
+    console.log('[Store] Acquired refresh lock, starting refresh...');
     
     const newEvents = await buildEvents();
+    const now = Date.now();
     
     if (newEvents.length > 0) {
-      cachedEvents = newEvents;
-      lastRefreshed = now;
-      console.log(`Refresh complete: ${newEvents.length} events cached`);
+      // Store in Redis
+      const storedEvents: StoredEvent[] = newEvents.map(e => ({
+        id: e.id,
+        ip: e.ip,
+        latitude: e.latitude,
+        longitude: e.longitude,
+        country: e.country,
+        score: e.score,
+        source: e.source,
+        reason: e.reason,
+        timestamp: e.timestamp,
+      }));
+      
+      await storeEvents(storedEvents);
+      await setLastRefreshed(now);
+      
+      // Update local cache as fallback
+      localCachedEvents = newEvents;
+      localLastRefreshed = now;
+      
+      // Invalidate summary cache (will be rebuilt on next request)
+      console.log(`[Store] Refresh complete: ${newEvents.length} events stored`);
     } else {
-      console.warn('Refresh produced no events, keeping old cache');
+      console.warn('[Store] Refresh produced no events, keeping old cache');
     }
   } catch (error) {
-    console.error('Error refreshing data:', error);
+    console.error('[Store] Error refreshing data:', error);
     // Keep using stale cache on error
   } finally {
     isRefreshing = false;
+    await releaseRefreshLock();
   }
 }
 
+/**
+ * Get events - tries Redis first, falls back to local cache or rebuild.
+ */
 export async function ensureFreshData(): Promise<AttackEvent[]> {
   await refreshIfNeeded();
-  return cachedEvents;
+  
+  // Try to get from Redis
+  const redis = getRedis();
+  if (redis) {
+    try {
+      const redisEvents = await getTopEvents(MAX_EVENTS);
+      if (redisEvents.length > 0) {
+        // Update local cache
+        localCachedEvents = redisEvents as AttackEvent[];
+        return localCachedEvents;
+      }
+    } catch (error) {
+      console.warn('[Store] Failed to get events from Redis:', error);
+    }
+  }
+  
+  // Fallback to local cache
+  if (localCachedEvents.length > 0) {
+    console.log('[Store] Using local cached events');
+    return localCachedEvents;
+  }
+  
+  // Last resort: try to rebuild without Redis
+  console.warn('[Store] No cached data available, attempting rebuild...');
+  try {
+    const freshEvents = await buildEvents();
+    localCachedEvents = freshEvents;
+    localLastRefreshed = Date.now();
+    return freshEvents;
+  } catch (error) {
+    console.error('[Store] Failed to rebuild events:', error);
+    return [];
+  }
 }
 
 export function getEvents(): AttackEvent[] {
-  return cachedEvents;
+  return localCachedEvents;
 }
 
-export function getSummary(): {
-  total: number;
-  topCountries: { country: string; count: number }[];
-  averageRisk: number;
-  lastUpdate: number;
-} {
-  const events = cachedEvents;
+/**
+ * Get summary - uses Redis cache when available.
+ */
+export async function getSummary(): Promise<Summary> {
+  // Try Redis cached summary first
+  const cachedSummary = await getCachedSummary();
+  if (cachedSummary) {
+    return cachedSummary;
+  }
+  
+  // Build summary from events
+  const events = localCachedEvents.length > 0 
+    ? localCachedEvents 
+    : await getTopEvents(MAX_EVENTS);
+  
+  // Get last refresh time
+  const lastUpdate = await getLastRefreshed() || localLastRefreshed;
   
   // Count by country
   const countryMap = new Map<string, number>();
@@ -156,10 +273,15 @@ export function getSummary(): {
   
   const averageRisk = events.length > 0 ? Math.round(totalRisk / events.length) : 0;
   
-  return {
+  const summary: Summary = {
     total: events.length,
     topCountries,
     averageRisk,
-    lastUpdate: lastRefreshed,
+    lastUpdate,
   };
+  
+  // Cache the summary
+  await setCachedSummary(summary);
+  
+  return summary;
 }

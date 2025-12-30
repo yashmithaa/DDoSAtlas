@@ -8,8 +8,8 @@ export async function GET() {
   try {
     await ensureFreshData();
     
-    // Get summary from cached data
-    const summary = getSummary();
+    // Get summary from cached data (now async with Redis support)
+    const summary = await getSummary();
     
     return NextResponse.json(summary);
   } catch (error) {
