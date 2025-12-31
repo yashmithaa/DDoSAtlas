@@ -11,10 +11,10 @@ export function PageContainer({
   className = "",
   centered = false,
 }: PageContainerProps) {
-  const baseClasses = "h-[calc(100vh-120px)]";
+  const baseClasses = "min-h-[calc(100vh-80px)] sm:min-h-[calc(100vh-100px)] lg:min-h-[calc(100vh-120px)]";
   const centeredClasses = centered
     ? "flex items-center justify-center"
-    : "overflow-auto p-6";
+    : "overflow-auto p-3 sm:p-4 md:p-6";
 
   return (
     <div className={`${baseClasses} ${centeredClasses} ${className}`}>

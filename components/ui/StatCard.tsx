@@ -15,11 +15,11 @@ const colorClasses = {
 
 export function StatCard({ label, value, color = "green" }: StatCardProps) {
   return (
-    <Card className="p-6">
-      <div className="text-gray-400 text-xs uppercase tracking-wider mb-2">
+    <Card className="p-4 sm:p-6">
+      <div className="text-gray-400 text-[10px] sm:text-xs uppercase tracking-wider mb-1 sm:mb-2">
         {label}
       </div>
-      <div className={`text-4xl font-bold ${colorClasses[color]}`}>{value}</div>
+      <div className={`text-2xl sm:text-3xl md:text-4xl font-bold ${colorClasses[color]}`}>{value}</div>
     </Card>
   );
 }

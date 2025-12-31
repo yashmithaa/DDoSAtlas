@@ -76,8 +76,8 @@ export function CountryListCard({
   compact = false,
 }: CountryListCardProps) {
   return (
-    <Card className={compact ? "p-4" : "p-6"}>
-      <CardHeader className={compact ? "mb-3" : "mb-6"}>{title}</CardHeader>
+    <Card className={compact ? "p-3 sm:p-4" : "p-4 sm:p-6"}>
+      <CardHeader className={compact ? "mb-2 sm:mb-3" : "mb-4 sm:mb-6"}>{title}</CardHeader>
       <CountryList
         countries={countries}
         total={total}

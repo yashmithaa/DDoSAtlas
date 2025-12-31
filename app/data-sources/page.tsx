@@ -81,19 +81,19 @@ export default function DataSourcesPage() {
 
   return (
     <PageContainer>
-      <div className="max-w-4xl mx-auto space-y-8">
+      <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8">
         <div>
-          <h1 className="text-2xl font-bold text-white mb-2">Data Sources</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-white mb-2">Data Sources</h1>
           
         </div>
 
         {/* Active Sources */}
         <div>
-          <h2 className="text-lg font-semibold text-green-400 mb-4">
+          <h2 className="text-base sm:text-lg font-semibold text-green-400 mb-3 sm:mb-4">
             Active Sources ({activeSources.length})
           </h2>
           {activeSources.length > 0 ? (
-            <div className="grid gap-4">
+            <div className="grid gap-3 sm:gap-4">
               {activeSources.map((source) => (
                 <DataSourceCard key={source.id} source={source} />
               ))}
@@ -111,10 +111,10 @@ export default function DataSourcesPage() {
         {/* Inactive Sources */}
         {inactiveSources.length > 0 && (
           <div>
-            <h2 className="text-lg font-semibold text-gray-400 mb-4">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-400 mb-3 sm:mb-4">
               Available Sources - Not Configured ({inactiveSources.length})
             </h2>
-            <div className="grid gap-4">
+            <div className="grid gap-3 sm:gap-4">
               {inactiveSources.map((source) => (
                 <DataSourceCard key={source.id} source={source} />
               ))}
@@ -128,34 +128,34 @@ export default function DataSourcesPage() {
 
 function DataSourceCard({ source }: { source: DataSource }) {
   return (
-    <Card className="p-4">
-      <div className="flex items-start justify-between">
+    <Card className="p-3 sm:p-4">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-0">
         <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
-            <h3 className="text-lg font-semibold text-white">{source.name}</h3>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
+            <h3 className="text-base sm:text-lg font-semibold text-white">{source.name}</h3>
             <span
-              className={`text-xs px-2 py-0.5 rounded-full ${typeColors[source.type]}`}
+              className={`text-[10px] sm:text-xs px-2 py-0.5 rounded-full ${typeColors[source.type]}`}
             >
               {source.type.replace("-", " ")}
             </span>
           </div>
-          <p className="text-sm text-gray-400 mb-3">{source.description}</p>
+          <p className="text-xs sm:text-sm text-gray-400 mb-2 sm:mb-3">{source.description}</p>
           {source.url !== "#" && (
             <a
               href={source.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-green-400 hover:text-green-300 transition-colors"
+              className="text-xs sm:text-sm text-green-400 hover:text-green-300 transition-colors"
             >
               Visit source →
             </a>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:ml-4">
           <span
             className={`w-2 h-2 rounded-full ${statusColors[source.status as keyof typeof statusColors]}`}
           />
-          <span className="text-xs text-gray-500">
+          <span className="text-[10px] sm:text-xs text-gray-500">
             {statusLabels[source.status as keyof typeof statusLabels]}
           </span>
         </div>

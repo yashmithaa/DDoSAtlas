@@ -12,9 +12,9 @@ export default function StatisticsPage() {
 
   return (
     <PageContainer>
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
         {/* Stats Grid */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           <StatCard
             label="Total Detections"
             value={summary?.total.toLocaleString() || 0}
@@ -42,8 +42,8 @@ export default function StatisticsPage() {
         )}
 
         {/* Recent Attacks */}
-        <Card className="p-6">
-          <CardHeader className="text-xl mb-6">Recent Attack Events</CardHeader>
+        <Card className="p-4 sm:p-6">
+          <CardHeader className="text-lg sm:text-xl mb-4 sm:mb-6">Recent Attack Events</CardHeader>
           <EventList events={events} limit={DISPLAY_LIMITS.RECENT_EVENTS} />
         </Card>
       </div>

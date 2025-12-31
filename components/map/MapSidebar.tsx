@@ -11,18 +11,18 @@ interface LiveStatsProps {
 
 function LiveStats({ total, activeEvents }: LiveStatsProps) {
   return (
-    <Card className="p-4">
-      <CardHeader className="mb-3">Live Statistics</CardHeader>
-      <div className="space-y-3">
+    <Card className="p-3 sm:p-4">
+      <CardHeader className="mb-2 sm:mb-3">Live Statistics</CardHeader>
+      <div className="space-y-2 sm:space-y-3">
         <div className="flex justify-between items-center">
-          <span className="text-xs text-gray-400">Total Attacks</span>
-          <span className="text-lg font-bold text-white">
+          <span className="text-[10px] sm:text-xs text-gray-400">Total Attacks</span>
+          <span className="text-base sm:text-lg font-bold text-white">
             {total.toLocaleString()}
           </span>
         </div>
         <div className="flex justify-between items-center">
-          <span className="text-xs text-gray-400">Active Events</span>
-          <span className="text-lg font-bold text-blue-400">{activeEvents}</span>
+          <span className="text-[10px] sm:text-xs text-gray-400">Active Events</span>
+          <span className="text-base sm:text-lg font-bold text-blue-400">{activeEvents}</span>
         </div>
       </div>
     </Card>

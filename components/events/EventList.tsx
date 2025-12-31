@@ -38,16 +38,16 @@ export function EventList({ events, limit, compact = false }: EventListProps) {
       {displayEvents.map((event) => (
         <div
           key={event.id}
-          className="flex items-center justify-between py-2 px-3 bg-gray-800/30 rounded hover:bg-gray-800/50 transition-colors"
+          className="flex flex-col sm:flex-row sm:items-center justify-between py-2 px-2 sm:px-3 bg-gray-800/30 rounded hover:bg-gray-800/50 transition-colors gap-1 sm:gap-0"
         >
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
             <StatusIndicator score={event.score} />
-            <span className="font-mono text-sm text-gray-300">{event.ip}</span>
-            <span className="text-sm text-gray-400">{event.country}</span>
+            <span className="font-mono text-xs sm:text-sm text-gray-300">{event.ip}</span>
+            <span className="text-xs sm:text-sm text-gray-400">{event.country}</span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500">Score: {event.score}</span>
-            <span className="text-xs text-gray-600">
+          <div className="flex items-center gap-2 sm:gap-4 ml-4 sm:ml-0">
+            <span className="text-xs sm:text-sm text-gray-500">Score: {event.score}</span>
+            <span className="text-[10px] sm:text-xs text-gray-600">
               {new Date(event.timestamp).toLocaleTimeString()}
             </span>
           </div>
